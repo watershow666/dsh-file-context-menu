@@ -30,7 +30,7 @@
 window.__ModuleLoader__.load({
   id: 'dsh-file-context-menu',
   factory() {
-    const VERSION = '1.3.0'
+    const VERSION = '1.4.0'
     const STYLE_ID = 'dfcm-style'
     const MENU_CLASS = 'dfcm-menu'
     const TOAST_CLASS = 'dfcm-toast'
@@ -47,6 +47,8 @@ window.__ModuleLoader__.load({
       'gi',
     )
     const ABS_RE = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/
+    /** Web links the menu can open in the browser or copy. */
+    const URL_RE = /^(?:https?:\/\/|mailto:)[^\s"'<>`]+$/i
     /** Containers where a path-looking string is prose, not a file card. */
     const PROSE_SELECTOR = [
       'pre', 'code', 'kbd', 'samp',
@@ -151,6 +153,7 @@ window.__ModuleLoader__.load({
       folder: 'M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
       save: 'M12 3v10m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
       copy: 'M9 9h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1',
+      link: 'M10.5 13.5a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 0 0-5.7-5.7l-1 1M13.5 10.5a4 4 0 0 0-5.7 0l-2.3 2.3a4 4 0 0 0 5.7 5.7l1-1',
       plus: 'M12 8v8m-4-4h8M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9A1.5 1.5 0 0 1 18.5 16H9l-5 4z',
     }
 
@@ -385,6 +388,54 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Web links
+     *
+     * Transcript links render as `<a href>` anchors (markdown links, citation
+     * chips) and sometimes as bare URLs in prose. Electron's default menu has
+     * no "copy link address", so both shapes become a link hit.
+     * ------------------------------------------------------------------ */
+
+    /** Accept only absolute web/mail targets; relative or script URLs are not links. */
+    function normalizeUrl(raw) {
+      const value = String(raw ?? '').trim()
+      if (value === '') return undefined
+      if (URL_RE.test(value)) return value
+      if (value.startsWith('//')) return `https:${value}`
+      return undefined
+    }
+
+    function urlHit(url, via, samples, text) {
+      const host = (() => {
+        try {
+          return new URL(url).host
+        } catch {
+          return url.replace(/^mailto:/i, '')
+        }
+      })()
+      const label = typeof text === 'string' && text.trim() !== '' ? text.trim().slice(0, 80) : host
+      return {
+        url,
+        link: true,
+        host,
+        name: label,
+        debug: { link: true, via, url: url.slice(0, 300), samples: samples ?? [] },
+      }
+    }
+
+    /** The `<a href>` under the pointer, if it points at a web target. */
+    function resolveLink(target) {
+      const start = target instanceof Element ? target : target?.parentElement
+      if (start === null || start === undefined) return undefined
+      if (start.closest(COLUMN_SELECTOR) === null) return undefined
+      if (isComposerNode(start)) return undefined
+      const anchor = typeof start.closest === 'function' ? start.closest('a[href]') : null
+      if (anchor === null) return undefined
+      const url = normalizeUrl(anchor.getAttribute('href'))
+      if (url === undefined) return undefined
+      return urlHit(url, 'anchor', undefined, anchor.textContent ?? '')
+    }
+
+    /* ------------------------------------------------------------------ *
      * Inline file chips
      *
      * Markdown file references render as small chips: an icon plus the bare
@@ -560,6 +611,7 @@ window.__ModuleLoader__.load({
       value = value.replace(TOKEN_LEAD, '').replace(TOKEN_TAIL, '')
       value = value.replace(TOKEN_SENTENCE_TAIL, '').replace(/[.,;:]+$/, '').trim()
       if (value === '' || value.length > 400) return undefined
+      if (URL_RE.test(value)) return value
       if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return undefined
       if (!ABS_RE.test(value)) return undefined
       return value
@@ -624,6 +676,38 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Bare URLs in prose contain `:`, which the whitespace tokenizer splits on,
+     * so scan the text node for a URL that covers the caret instead.
+     */
+    const URL_SCAN = /(?:https?:\/\/|mailto:)[^\s"'<>`（）【】《》，；。、！？…]+/gi
+    const URL_TRAIL = /[.,;:!?。，；：！？、）】》」』"'`]+$/
+
+    function urlAtCaret(event) {
+      const caret = caretPoint(event)
+      if (caret === undefined) return undefined
+      const node = caret.node
+      if (node === null || node === undefined || node.nodeType !== 3) return undefined
+      const parent = node.parentElement
+      if (parent === null || parent === undefined) return undefined
+      if (parent.closest(COLUMN_SELECTOR) === null) return undefined
+      if (isComposerNode(parent)) return undefined
+      const data = String(node.data ?? '')
+      const offset = Math.max(0, Math.min(data.length, caret.offset))
+      URL_SCAN.lastIndex = 0
+      let match = URL_SCAN.exec(data)
+      while (match !== null) {
+        const start = match.index
+        const end = start + match[0].length
+        if (offset >= start && offset <= end) {
+          const url = match[0].replace(URL_TRAIL, '')
+          return normalizeUrl(url)
+        }
+        match = URL_SCAN.exec(data)
+      }
+      return undefined
+    }
+
+    /**
      * Resolve the path under the pointer. Returns `{ path, samples }`;
      * `samples` is only used for the diagnostic log when nothing matched.
      */
@@ -651,10 +735,13 @@ window.__ModuleLoader__.load({
       }
       const caret = pathTokenAtCaret(event)
       if (caret !== undefined) return { path: caret, samples }
+      const url = urlAtCaret(event)
+      if (url !== undefined) return { path: url, samples }
       return { path: undefined, samples }
     }
 
     function tokenHit(path, samples) {
+      if (URL_RE.test(path)) return urlHit(path, 'token', samples)
       const isDir = looksLikeDir(path)
       const absolute = path.replace(/[\\/]+$/, '')
       return {
@@ -846,6 +933,16 @@ window.__ModuleLoader__.load({
       }
       const result = await post('open', { path, action: 'open' })
       return result.ok === true
+    }
+
+    /** Hand a web URL to the desktop's default browser (host half validates it). */
+    async function openUrl(url) {
+      try {
+        const result = await post('link', { url })
+        return result.ok === true
+      } catch {
+        return false
+      }
     }
 
     async function revealPath(path) {
@@ -1195,6 +1292,19 @@ window.__ModuleLoader__.load({
       const hit = activeHit
       closeMenu()
       if (hit === undefined) return
+      if (hit.link === true) {
+        if (id === 'copyLink') {
+          const ok = await copyPath(hit.url)
+          toast(ok ? '链接已复制' : '复制失败')
+          return
+        }
+        if (id === 'openLink') {
+          const ok = await openUrl(hit.url)
+          if (!ok) toast('打开链接失败')
+          return
+        }
+        return
+      }
       const path = await absolutePathOf(hit)
       if (path === undefined) {
         toast('找不到该文件的绝对路径')
@@ -1242,6 +1352,20 @@ window.__ModuleLoader__.load({
       const head = document.createElement('div')
       head.className = 'dfcm-head'
       const isDir = hit.isDir === true
+
+      if (hit.link === true) {
+        head.textContent = hit.url.length > 68 ? `${hit.url.slice(0, 65)}…` : hit.url
+        head.title = hit.url
+        menu.appendChild(head)
+        menu.appendChild(row({ id: 'openLink', label: '打开链接', icon: 'open' }))
+        menu.appendChild(separator())
+        menu.appendChild(row({ id: 'copyLink', label: '复制链接地址', icon: 'link' }))
+        document.body.appendChild(menu)
+        menuNode = menu
+        place(menu, x, y)
+        return
+      }
+
       head.textContent = isDir
         ? `${hit.name ?? hit.absolute ?? ''}/`
         : hit.name ?? hit.relative ?? hit.absolute ?? ''
@@ -1278,6 +1402,7 @@ window.__ModuleLoader__.load({
 
       let hit = resolveCard(event.target)
       let samples
+      if (hit === undefined) hit = resolveLink(event.target)
       if (hit === undefined) hit = resolveChip(event.target)
       if (hit === undefined) {
         const token = pathTokenAtPoint(event)
@@ -1300,7 +1425,13 @@ window.__ModuleLoader__.load({
       // Keep the clicked node: the fiber chain off it is how the session id is
       // recovered later (nothing in the DOM carries it for prose paths).
       hit.node = event.target instanceof Element ? event.target : event.target?.parentElement
-      report({ event: hit.token === true ? 'token-hit' : hit.chip === true ? 'chip-hit' : 'hit', debug: hit.debug })
+      report({
+        event: hit.link === true ? 'link-hit'
+          : hit.token === true ? 'token-hit'
+            : hit.chip === true ? 'chip-hit'
+              : 'hit',
+        debug: hit.debug,
+      })
       openMenu(event.clientX, event.clientY, hit)
     }
 

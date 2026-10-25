@@ -234,6 +234,22 @@ function launchOpen(path) {
   }).unref()
 }
 
+/** Only absolute web/mail targets may reach the shell. */
+const ALLOWED_URL = /^(?:https?:\/\/|mailto:)[^\s"'<>`]+$/i
+
+function launchUrl(url) {
+  spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-WindowStyle', 'Hidden',
+    '-Command', 'Start-Process $env:DSH_FCM_URL',
+  ], {
+    env: { ...process.env, DSH_FCM_URL: url },
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  }).unref()
+}
+
 function launchReveal(path) {
   // `explorer.exe /select,"<path>"` — one argument, no shell involved.
   spawn('explorer.exe', [`/select,${path}`], { detached: true, stdio: 'ignore' }).unref()
@@ -304,6 +320,21 @@ async function handle(ctx, req, res) {
       try {
         if (body.action === 'reveal') launchReveal(path)
         else launchOpen(path)
+        json(res, 200, { ok: true })
+      } catch (error) {
+        json(res, 200, { ok: false, error: String(error) })
+      }
+      return
+    }
+
+    case 'link': {
+      const url = typeof body.url === 'string' ? body.url.trim() : ''
+      if (url.length > 2048 || !ALLOWED_URL.test(url)) {
+        json(res, 200, { ok: false, error: 'invalid url' })
+        return
+      }
+      try {
+        launchUrl(url)
         json(res, 200, { ok: true })
       } catch (error) {
         json(res, 200, { ok: false, error: String(error) })
