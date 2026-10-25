@@ -1,0 +1,4 @@
+# 文件卡片右键菜单：一个宿主空行，菜单 UI 与系统操作全部由 client.js + 本包 index.js 承担。
+- insert:
+    - id: file-context-menu
+      name: 'dsh-file-context-menu'

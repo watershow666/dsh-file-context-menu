@@ -1,0 +1,32 @@
+{
+  "name": "dsh-file-context-menu",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Native-style right-click context menu for file cards, inline file chips and bare paths in the DSH chat flow: reveal in folder, save as, copy path and add back to the composer.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/watershow666/dsh-file-context-menu.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
