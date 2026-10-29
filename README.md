@@ -1,5 +1,7 @@
 # dsh-file-context-menu
 
+<img src="icon.svg" width="72" height="72" alt="dsh-file-context-menu icon">
+
 > A native-style right-click context menu for file cards, inline file chips and bare paths in the DeepSeek Harness (DSH) desktop chat flow — reveal in folder, save as, copy path, add back to the composer.
 
 给 DSH 聊天流里的文件卡片加一套原生风格的右键菜单。

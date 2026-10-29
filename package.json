@@ -1,6 +1,7 @@
 {
   "name": "dsh-file-context-menu",
-  "version": "1.4.0",
+  "version": "1.5.0",
+  "icon": "./icon.svg",
   "private": true,
   "description": "Native-style right-click context menu for file cards, inline file chips and bare paths in the DSH chat flow: reveal in folder, save as, copy path and add back to the composer.",
   "license": "MIT",
@@ -11,12 +12,15 @@
   "type": "module",
   "exports": {
     ".": "./index.js",
-    "./client": "./client.js"
+    "./client": "./client.js",
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
     "client.js",
     "cordis.patch.yml",
+    "icon.svg",
+    "icon.png",
     "README.md",
     "LICENSE"
   ],
